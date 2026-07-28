@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Appixo Book · Admin</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- 🔒 LOCK OVERLAY -->
+<div class="lock-overlay active" id="lockOverlay">
+  <div class="lock-card">
+    <div class="lock-logo">
+      <span class="logo-main">Appixo Book</span>
+      <span class="logo-sub">✦ Admin ✦</span>
+    </div>
+    <div class="lock-icon">️</div>
+    <h2 class="lock-title">Espace Admin</h2>
+    <p class="lock-desc">Accès réservé</p>
+    <div class="lock-input-group">
+      <input type="password" id="lockPassword" placeholder="Mot de passe" />
+      <button class="lock-btn-unlock" id="btnUnlock">Accéder</button>
+      <div class="lock-error" id="lockError">❌ Accès refusé</div>
+    </div>
+    <div class="lock-footer">💡 Mot de passe: <code>appixo</code></div>
+  </div>
+</div>
+
+<!--  BOOK CONTAINER -->
+<div class="book-container locked-blur" id="bookContainer">
+
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div class="page-indicator">
+      <span class="label">Page</span>
+      <span class="num" id="currentPage">1</span>
+      <span class="total">/ <span id="totalPages">1</span></span>
+    </div>
+    <div class="lang-switch">
+      <button data-lang="fr" class="active">🇫🇷</button>
+      <button data-lang="en">🇬🇧</button>
+      <button data-lang="ar">🇸</button>
+    </div>
+  </div>
+
+  <!-- BOOK VIEW -->
+  <div class="book-view">
+    <div class="page-content" id="pageContent"></div>
+  </div>
+
+  <!-- BOTTOM ACTIONS -->
+  <div class="bottom-actions">
+    <button class="btn-prev" id="btnPrev">◀ Préc.</button>
+    <button class="btn-next" id="btnNext">Suiv. ▶</button>
+    <div class="separator"></div>
+    <button class="btn-add" id="btnAddCover">📖 Cover</button>
+    <button class="btn-add" id="btnAddExercise">📝 Exo</button>
+    <button class="btn-delete" id="btnDelete">🗑️</button>
+    <div class="separator"></div>
+    <button class="btn-save" id="btnSave"></button>
+    <button class="btn-publish" id="btnPublish">✅</button>
+  </div>
+</div>
+
+<!-- LIGHTBOX -->
+<div class="lightbox-overlay" id="lightbox">
+  <button class="close-btn" id="lightboxClose">✕</button>
+  <img id="lightboxImg" src="" alt="Aperçu" />
+</div>
+
+<!-- CONFIRM DIALOG -->
+<div class="lock-overlay" id="confirmDialog">
+  <div class="lock-card">
+    <div class="lock-icon">⚠️</div>
+    <h2 class="lock-title">Confirmation</h2>
+    <p class="lock-desc" id="confirmMsg">Êtes-vous sûr ?</p>
+    <div class="lock-input-group" style="flex-direction:row;gap:10px">
+      <button class="lock-btn-unlock" id="confirmCancel" style="background:#64748b">Annuler</button>
+      <button class="lock-btn-unlock" id="confirmOk" style="background:#ef4444">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- FILE INPUT -->
+<input type="file" id="fileInput" accept="image/*" style="display:none" />
+
+<script>
+const PASSWORD = 'appixo';
+const STORAGE_KEY = 'appixo_book_data';
+
+const $ = (id) => document.getElementById(id);
+let bookData = { pages: [] };
+let currentIndex = 0;
+let pendingAction = null;
+
+// Unlock
+function unlock() {
+  if ($('lockPassword').value.trim() === PASSWORD) {
+    $('lockOverlay').classList.remove('active');
+    $('bookContainer').classList.remove('locked-blur');
+    loadBook();
+  } else {
+    $('lockError').classList.add('show');
+    setTimeout(() => $('lockError').classList.remove('show'), 2000);
+  }
+}
+
+$('btnUnlock').addEventListener('click', unlock);
+$('lockPassword').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
+
+// Load book
+function loadBook() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw) {
+    try { bookData = JSON.parse(raw); }
+    catch { bookData = { pages: [{ type: 'cover', image: null }] }; }
+  } else {
+    bookData = { pages: [{ type: 'cover', image: null }] };
+  }
+  $('totalPages').textContent = bookData.pages.length;
+  renderPage();
+}
+
+// Render page
+function renderPage() {
+  const page = bookData.pages[currentIndex];
+  $('currentPage').textContent = currentIndex + 1;
+  const label = page.type === 'cover' ? 'Page de garde' : 'Exercice';
+  const icon = page.type === 'cover' ? '📖' : '📝';
+
+  $('pageContent').innerHTML = page.image
+    ? `<div class="${page.type === 'cover' ? 'page-cover' : 'exercise-zone'}"><img class="${page.type === 'cover' ? 'cover-main' : 'full-page-image'}" src="${page.image}" alt="${label}" /></div>`
+    : `<div class="empty-page-placeholder" id="dropZone"><span>${icon}</span>${label}<div class="hint">Cliquer pour ajouter</div></div>`;
+
+  const zone = $('dropZone') || $('pageContent').firstElementChild;
+  zone.addEventListener('click', () => { if (!page.image) pickImage(); });
+  
+  const img = $('pageContent').querySelector('img');
+  if (img) {
+    img.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(img.src); });
+    zone.addEventListener('click', () => pickImage());
+  }
+
+  // Drag & drop
+  if (!page.image) {
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.style.outline = '2px dashed #8b5cf6'; });
+    zone.addEventListener('dragleave', () => zone.style.outline = 'none');
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.style.outline = 'none';
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) readImage(file);
+    });
+  }
+}
+
+// Image picker
+function pickImage() { $('fileInput').click(); }
+
+$('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) readImage(file);
+  $('fileInput').value = '';
+});
+
+function readImage(file) {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    bookData.pages[currentIndex].image = ev.target.result;
+    renderPage();
+    showToast('Image ajoutée');
+  };
+  reader.readAsDataURL(file);
+}
+
+// Navigation
+$('btnPrev').addEventListener('click', () => {
+  if (currentIndex > 0) { currentIndex--; renderPage(); }
+});
+$('btnNext').addEventListener('click', () => {
+  if (currentIndex < bookData.pages.length - 1) { currentIndex++; renderPage(); }
+});
+
+// Admin actions
+$('btnAddCover').addEventListener('click', () => {
+  bookData.pages.splice(currentIndex + 1, 0, { type: 'cover', image: null });
+  $('totalPages').textContent = bookData.pages.length;
+  currentIndex++;
+  renderPage();
+  showToast('Cover ajoutée');
+});
+
+$('btnAddExercise').addEventListener('click', () => {
+  bookData.pages.splice(currentIndex + 1, 0, { type: 'exercise', image: null });
+  $('totalPages').textContent = bookData.pages.length;
+  currentIndex++;
+  renderPage();
+  showToast('Exercice ajouté');
+});
+
+$('btnDelete').addEventListener('click', () => {
+  askConfirm('Supprimer cette page ?', () => {
+    if (bookData.pages.length <= 1) { showToast('Au moins 1 page requise', 'error'); return; }
+    bookData.pages.splice(currentIndex, 1);
+    if (currentIndex >= bookData.pages.length) currentIndex--;
+    $('totalPages').textContent = bookData.pages.length;
+    renderPage();
+    showToast('Page supprimée');
+  });
+});
+
+$('btnSave').addEventListener('click', () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(bookData));
+  showToast('Sauvegardé');
+});
+
+$('btnPublish').addEventListener('click', () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(bookData));
+  showToast('✅ Publié');
+});
+
+// Confirm dialog
+function askConfirm(msg, cb) {
+  $('confirmMsg').textContent = msg;
+  $('confirmDialog').classList.add('active');
+  pendingAction = cb;
+}
+
+$('confirmCancel').addEventListener('click', () => {
+  $('confirmDialog').classList.remove('active');
+  pendingAction = null;
+});
+
+$('confirmOk').addEventListener('click', () => {
+  $('confirmDialog').classList.remove('active');
+  if (pendingAction) pendingAction();
+  pendingAction = null;
+});
+
+// Lightbox
+function openLightbox(src) {
+  $('lightboxImg').src = src;
+  $('lightbox').classList.add('open');
+}
+$('lightboxClose').addEventListener('click', () => $('lightbox').classList.remove('open'));
+$('lightbox').addEventListener('click', (e) => { if (e.target === $('lightbox')) $('lightbox').classList.remove('open'); });
+
+// Language
+document.querySelectorAll('.lang-switch button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.lang-switch button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// Toast
+function showToast(msg, type = 'success') {
+  const toast = $('toast');
+  toast.textContent = msg;
+  toast.className = `toast show ${type}`;
+  setTimeout(() => toast.classList.remove('show'), 2000);
+}
+</script>
+</body>
+</html>
