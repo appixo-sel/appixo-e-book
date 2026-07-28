@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0b1120" />
+<title>Appixo Book · Admin</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- 🔒 LOCK OVERLAY -->
+<div class="lock-overlay active" id="lockOverlay">
+  <div class="lock-card">
+    <div class="lock-logo">
+      <span class="logo-main">Appixo Book</span>
+      <span class="logo-sub">✦ Admin Panel ✦</span>
+      <span class="logo-tagline">🔒 Accès réservé</span>
+    </div>
+    <div class="lock-icon">🛠️</div>
+    <h2 class="lock-title">Espace Administrateur</h2>
+    <p class="lock-desc">Accès réservé pour gérer le carnet</p>
+    <div class="lock-input-group">
+      <input type="password" id="lockPassword" placeholder="Mot de passe" autocomplete="off" />
+      <button class="lock-btn-unlock" id="btnUnlock">Accéder au panneau</button>
+      <div class="lock-error" id="lockError">❌ Accès refusé</div>
+    </div>
+    <div class="lock-footer">💡 Démo : <code>appixo</code> · Appixo Admin • v2.4</div>
+  </div>
+</div>
+
+<!-- 📖 BOOK CONTAINER -->
+<div class="book-container locked-blur" id="bookContainer">
+
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div class="top-bar-left">
+      <div class="page-indicator">
+        <span class="label">Page</span>
+        <span class="num" id="currentPage">1</span>
+        <span class="total">/ <span id="totalPages">1</span></span>
+      </div>
+    </div>
+    <div class="lang-switch" id="langSwitch">
+      <button data-lang="fr" class="active">🇫🇷 FR</button>
+      <button data-lang="en">🇬🇧 EN</button>
+      <button data-lang="ar">🇸🇦 AR</button>
+    </div>
+  </div>
+
+  <!-- BOOK VIEW -->
+  <div class="book-view">
+    <div class="page-wrapper">
+      <div class="page-content" id="pageContent"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM ACTIONS (Admin) -->
+  <div class="bottom-actions">
+    <button class="btn-prev" id="btnPrev" title="Précédent">
+      <span class="icon">◀</span><span class="label">Préc.</span>
+    </button>
+    <button class="btn-next" id="btnNext" title="Suivant">
+      <span class="icon">▶</span><span class="label">Suiv.</span>
+    </button>
+    <div class="separator"></div>
+    <button class="btn-export" id="btnAddCover" title="Page de garde">
+      <span class="icon">📖</span><span class="label">Couverture</span>
+    </button>
+    <button class="btn-download" id="btnAddExercise" title="Exercice">
+      <span class="icon">📝</span><span class="label">Exercice</span>
+    </button>
+    <button class="btn-print" id="btnDelete" title="Supprimer">
+      <span class="icon">🗑️</span><span class="label">Suppr.</span>
+    </button>
+    <button class="btn-prev" id="btnClear" title="Vider" style="background:linear-gradient(135deg,#ef4444,#b91c1c)!important">
+      <span class="icon">🧹</span><span class="label">Vider</span>
+    </button>
+    <div class="separator"></div>
+    <button class="btn-export" id="btnSave" title="Sauvegarder">
+      <span class="icon">💾</span><span class="label">Sauver</span>
+    </button>
+    <button class="btn-download" id="btnDownload" title="Télécharger">
+      <span class="icon">⬇️</span><span class="label">Téléch.</span>
+    </button>
+    <button class="btn-print" id="btnPrint" title="Imprimer">
+      <span class="icon">🖨️</span><span class="label">Impr.</span>
+    </button>
+    <button class="btn-export" id="btnPublish" title="Publier" style="background:linear-gradient(135deg,#22c55e,#16a34a)!important">
+      <span class="icon">✅</span><span class="label">Publier</span>
+    </button>
+  </div>
+</div>
+
+<!-- LIGHTBOX -->
+<div class="lightbox-overlay" id="lightbox">
+  <button class="close-btn" id="lightboxClose">✕</button>
+  <img id="lightboxImg" src="" alt="Aperçu" />
+</div>
+
+<!-- CONFIRM DIALOG -->
+<div class="lock-overlay" id="confirmDialog">
+  <div class="lock-card">
+    <div class="lock-icon">⚠️</div>
+    <h2 class="lock-title">Confirmation</h2>
+    <p class="lock-desc" id="confirmMsg">Êtes-vous sûr ?</p>
+    <div class="lock-input-group" style="flex-direction:row;gap:10px">
+      <button class="lock-btn-unlock" id="confirmCancel" style="background:linear-gradient(135deg,#64748b,#475569)">Annuler</button>
+      <button class="lock-btn-unlock" id="confirmOk" style="background:linear-gradient(135deg,#ef4444,#b91c1c)">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- HIDDEN FILE INPUT -->
+<input type="file" id="fileInput" accept="image/*" style="display:none" />
+
+<script>
+/* =========================================================
+   APPIXO BOOK — ADMIN (v2.4)
+   ========================================================= */
+const PASSWORD = 'appixo';
+const STORAGE_KEY = 'appixo_book_data';
+
+const $ = (id) => document.getElementById(id);
+const lockOverlay = $('lockOverlay');
+const bookContainer = $('bookContainer');
+const lockError = $('lockError');
+const pageContent = $('pageContent');
+const currentPageEl = $('currentPage');
+const totalPagesEl = $('totalPages');
+const lightbox = $('lightbox');
+const lightboxImg = $('lightboxImg');
+const toast = $('toast');
+const fileInput = $('fileInput');
+const confirmDialog = $('confirmDialog');
+
+let bookData = { pages: [] };
+let currentIndex = 0;
+let pendingAction = null;
+
+/* ---------- LOCK ---------- */
+function unlock() {
+  const val = $('lockPassword').value.trim();
+  if (val === PASSWORD) {
+    lockOverlay.classList.remove('active');
+    bookContainer.classList.remove('locked-blur');
+    loadBook();
+  } else {
+    lockError.classList.add('show');
+    setTimeout(() => lockError.classList.remove('show'), 2000);
+  }
+}
+$('btnUnlock').addEventListener('click', unlock);
+$('lockPassword').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(); });
+
+/* ---------- LOAD ---------- */
+function loadBook() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw) {
+    try { bookData = JSON.parse(raw); }
+    catch { bookData = { pages: [] }; }
+  }
+  if (!bookData.pages || !bookData.pages.length) {
+    bookData.pages = [{ type: 'cover', image: null }];
+  }
+  totalPagesEl.textContent = bookData.pages.length;
+  renderPage();
+}
+
+/* ---------- RENDER ---------- */
+function renderPage() {
+  const page = bookData.pages[currentIndex];
+  if (!page) return;
+  currentPageEl.textContent = currentIndex + 1;
+
+  const label = page.type === 'cover' ? 'Page de garde' : 'Exercice';
+  const icon = page.type === 'cover' ? '📖' : '📝';
+
+  pageContent.innerHTML = `
+    <div class="${page.type === 'cover' ? 'page-cover' : 'exercise-zone'}" id="dropZone">
+      ${page.image
+        ? `<img class="${page.type === 'cover' ? 'cover-main' : 'full-page-image'}" src="${page.image}" alt="${label}" />`
+        : `<div class="empty-page-placeholder">
+             <span>${icon}</span>${label}
+             <div class="hint">Cliquer pour ajouter une image</div>
+           </div>`}
+      <div class="click-hint">✏️ Modifier</div>
+    </div>`;
+
+  const zone = $('dropZone');
+  zone.addEventListener('click', () => pickImage());
+  const img = zone.querySelector('img');
+  if (img) img.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(img.src); });
+
+  // Drag & drop
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.style.outline = '2px dashed #8b5cf6'; });
+  zone.addEventListener('dragleave', () => zone.style.outline = 'none');
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.style.outline = 'none';
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) readImage(file);
+  });
+}
+
+/* ---------- IMAGE PICKER ---------- */
+function pickImage() { fileInput.click(); }
+fileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) readImage(file);
+  fileInput.value = '';
+});
+function readImage(file) {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    bookData.pages[currentIndex].image = ev.target.result;
+    renderPage();
+    showToast('Image ajoutée', 'success');
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ---------- NAVIGATION ---------- */
+$('btnPrev').addEventListener('click', () => {
+  if (currentIndex > 0) { currentIndex--; renderPage(); }
+  else showToast('Déjà au début', 'info');
+});
+$('btnNext').addEventListener('click', () => {
+  if (currentIndex < bookData.pages.length - 1) { currentIndex++; renderPage(); }
+  else showToast('Fin du carnet', 'info');
+});
+
+/* ---------- ADMIN ACTIONS ---------- */
+$('btnAddCover').addEventListener('click', () => {
+  bookData.pages.splice(currentIndex + 1, 0, { type: 'cover', image: null });
+  totalPagesEl.textContent = bookData.pages.length;
+  currentIndex++;
+  renderPage();
+  showToast('Page de garde ajoutée', 'success');
+});
+$('btnAddExercise').addEventListener('click', () => {
+  bookData.pages.splice(currentIndex + 1, 0, { type: 'exercise', image: null });
+  totalPagesEl.textContent = bookData.pages.length;
+  currentIndex++;
+  renderPage();
+  showToast('Exercice ajouté', 'success');
+});
+$('btnDelete').addEventListener('click', () => {
+  askConfirm('Supprimer cette page ?', () => {
+    if (bookData.pages.length <= 1) { showToast('Au moins une page requise', 'error'); return; }
+    bookData.pages.splice(currentIndex, 1);
+    if (currentIndex >= bookData.pages.length) currentIndex--;
+    totalPagesEl.textContent = bookData.pages.length;
+    renderPage();
+    showToast('Page supprimée', 'success');
+  });
+});
+$('btnClear').addEventListener('click', () => {
+  askConfirm('Vider tout le carnet ?', () => {
+    bookData.pages = [{ type: 'cover', image: null }];
+    currentIndex = 0;
+    totalPagesEl.textContent = bookData.pages.length;
+    renderPage();
+    showToast('Carnet vidé', 'success');
+  });
+});
+$('btnSave').addEventListener('click', () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(bookData));
+  showToast('Sauvegardé localement', 'success');
+});
+$('btnPublish').addEventListener('click', () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(bookData));
+  showToast('✅ Carnet publié', 'success');
+});
+$('btnDownload').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(bookData, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'appixo-book.json';
+  a.click();
+  showToast('Fichier téléchargé', 'success');
+});
+$('btnPrint').addEventListener('click', () => window.print());
+
+/* ---------- CONFIRM DIALOG ---------- */
+function askConfirm(msg, cb) {
+  $('confirmMsg').textContent = msg;
+  confirmDialog.classList.add('active');
+  pendingAction = cb;
+}
+$('confirmCancel').addEventListener('click', () => {
+  confirmDialog.classList.remove('active');
+  pendingAction = null;
+});
+$('confirmOk').addEventListener('click', () => {
+  confirmDialog.classList.remove('active');
+  if (pendingAction) pendingAction();
+  pendingAction = null;
+});
+
+/* ---------- LIGHTBOX ---------- */
+function openLightbox(src) {
+  lightboxImg.src = src;
+  lightbox.classList.add('open');
+}
+function closeLightbox() {
+  lightbox.classList.remove('open');
+  lightboxImg.src = '';
+}
+$('lightboxClose').addEventListener('click', closeLightbox);
+lightbox.addEventListener('click', (e) => { if (e.target === lightbox) closeLightbox(); });
+
+/* ---------- LANG ---------- */
+document.querySelectorAll('#langSwitch button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#langSwitch button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.documentElement.lang = btn.dataset.lang;
+    showToast('Langue : ' + btn.dataset.lang.toUpperCase(), 'info');
+  });
+});
+
+/* ---------- KEYBOARD ---------- */
+document.addEventListener('keydown', (e) => {
+  if (lockOverlay.classList.contains('active') || confirmDialog.classList.contains('active')) return;
+  if (e.key === 'ArrowRight') $('btnNext').click();
+  if (e.key === 'ArrowLeft') $('btnPrev').click();
+  if (e.key === 'Escape') closeLightbox();
+});
+
+/* ---------- TOAST ---------- */
+function showToast(msg, type = 'info') {
+  toast.textContent = msg;
+  toast.className = 'toast show ' + type;
+  setTimeout(() => toast.classList.remove('show'), 2200);
+}
+</script>
+</body>
+</html>
